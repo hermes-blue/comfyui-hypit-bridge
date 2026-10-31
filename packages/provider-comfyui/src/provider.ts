@@ -120,6 +120,9 @@ export const comfyuiDefaults = {
   concurrency: 1,
   pollIntervalMs: 5_000,
   chainEngine: "auto",
+  // "multishot" needs the ComfyUI-H3-Multishot pack; "native" uses only ComfyUI's own MiniMax H3 nodes
+  // and cannot carry image/audio references on the single-take route.
+  singleTakeEngine: "multishot",
   // Reference-driven regeneration (MiniMaxH3ReferenceToVideo): official quality-first recipe —
   // ref2va weights, res_multistep/simple at 20 steps, no turbo LoRA. refTurbo swaps in a ref2v
   // turbo LoRA at refTurboSteps (4-step v0.1 and 8-step v1.0 768p pairings ship on lightx2v's
@@ -473,6 +476,7 @@ type GenerationSettings = {
   unetName: string; loraName: string; clipName: string; videoVaeName: string; audioVaeName: string;
   steps: number; sampler: string; scheduler: string; useSolAttn: boolean; filenamePrefix: string; crf: number;
   useEasyCache: boolean; easyCacheThreshold: number; useSpectrum: boolean;
+  singleTakeEngine: string;
   refUnetName: string; refLoraName: string; refTurbo: boolean; refTurboSteps: number; refSteps: number; refSampler: string; refScheduler: string; refSolAttn: boolean; refSolAttnTau: number; refSolAttnStart: number; refSolAttnEnd: number; refSolAttnInt8Pv: boolean;
   controlPatchName: string;
   allowAuto2K: boolean;
@@ -644,10 +648,13 @@ function buildInfiniteGraph(args: {
   return graph;
 }
 
-/** Frame-guided route (last frame present, first optional): the native MiniMax H3 first/last-frame path. */
+/**
+ * Native MiniMax H3 route. Frame-guided with a first and/or last frame; with neither frame it is the
+ * text-only path of ComfyUI's own video_minimax_h3_t2v template (singleTakeEngine "native").
+ */
 function buildFrameGraph(args: {
   prompt: string; width: number; height: number; frames: number; seed: number;
-  firstFrame?: string; lastFrame: string;
+  firstFrame?: string; lastFrame?: string;
 }, settings: GenerationSettings): ComfyGraph {
   const chain = modelChainNodes(settings);
   const graph = chain.graph;
@@ -658,7 +665,9 @@ function buildFrameGraph(args: {
   if (args.firstFrame !== undefined) {
     encodeInputs.first_frame = scaledImageNode(graph, "first_frame", args.firstFrame, args.width, args.height);
   }
-  encodeInputs.last_frame = scaledImageNode(graph, "last_frame", args.lastFrame, args.width, args.height);
+  if (args.lastFrame !== undefined) {
+    encodeInputs.last_frame = scaledImageNode(graph, "last_frame", args.lastFrame, args.width, args.height);
+  }
   graph.encode = { class_type: "MiniMaxH3ImageToVideo", inputs: encodeInputs };
   graph.noise = { class_type: "RandomNoise", inputs: { noise_seed: args.seed } };
   graph.guider = { class_type: "BasicGuider", inputs: { model: chain.model, conditioning: ["encode", 0] } };
@@ -765,7 +774,7 @@ function buildRetakeGraph(args: {
   return graph;
 }
 
-function serviceSupportFor(refUnetAvailable: boolean): (request: EndpointRequest) => EndpointSupport {
+function serviceSupportFor(refUnetAvailable: boolean, nativeSingleTake = false): (request: EndpointRequest) => EndpointSupport {
   return (request: EndpointRequest): EndpointSupport => {
     const ports = (request.constraints as unknown as GenerationRequest).ports;
     const duration = ports.duration?.[0];
@@ -783,6 +792,13 @@ function serviceSupportFor(refUnetAvailable: boolean): (request: EndpointRequest
       return {
         status: "unsupported",
         reason: "Video references need the ref2va checkpoint on the ComfyUI host; it is not installed (config refUnetName is empty)",
+      };
+    }
+    if (nativeSingleTake && (ports.referenceVideo ?? []).length === 0
+      && ((ports.referenceImage ?? []).length > 0 || (ports.referenceAudio ?? []).length > 0)) {
+      return {
+        status: "unsupported",
+        reason: "singleTakeEngine \"native\" has no image/audio reference route; it needs the ComfyUI-H3-Multishot pack",
       };
     }
     return mappingSupportsRequest(mapping, request.constraints)
@@ -1223,6 +1239,7 @@ export function createComfyuiProvider(options: {
   useEasyCache?: boolean | undefined; useSpectrum?: boolean | undefined;
   easyCacheThreshold?: number | undefined;
   chainEngine?: string | undefined;
+  singleTakeEngine?: string | undefined;
   refUnetName?: string | undefined; refLoraName?: string | undefined; refTurbo?: boolean | undefined;
   refTurboSteps?: number | undefined;
   refSteps?: number | undefined; refSampler?: string | undefined; refScheduler?: string | undefined;
@@ -1257,7 +1274,12 @@ export function createComfyuiProvider(options: {
   if (configuredChainEngine !== "auto" && configuredChainEngine !== "infinite" && configuredChainEngine !== "multishot") {
     throw new Error(`chainEngine must be "auto", "infinite" or "multishot", not ${configuredChainEngine}`);
   }
+  const singleTakeEngine = options.singleTakeEngine ?? comfyuiDefaults.singleTakeEngine;
+  if (singleTakeEngine !== "multishot" && singleTakeEngine !== "native") {
+    throw new Error(`singleTakeEngine must be "multishot" or "native", not ${singleTakeEngine}`);
+  }
   const settings: GenerationSettings = {
+    singleTakeEngine,
     unetName: options.unetName ?? comfyuiDefaults.unetName,
     loraName: options.loraName ?? comfyuiDefaults.loraName,
     clipName: options.clipName ?? comfyuiDefaults.clipName,
@@ -1304,7 +1326,7 @@ export function createComfyuiProvider(options: {
     ltxUpscalerName: options.ltxUpscalerName ?? comfyuiDefaults.ltxUpscalerName,
     ltxPrefix: options.ltxPrefix ?? comfyuiDefaults.ltxPrefix,
   };
-  const serviceSupport = serviceSupportFor(settings.refUnetName.length > 0);
+  const serviceSupport = serviceSupportFor(settings.refUnetName.length > 0, settings.singleTakeEngine === "native");
   const controlSupport = controlSupportFor(settings.refUnetName.length > 0 && settings.controlPatchName.length > 0);
 
   async function requestJson(path: string, init: RequestInit = {}): Promise<Record<string, unknown>> {
@@ -1490,14 +1512,14 @@ export function createComfyuiProvider(options: {
       }, settings);
       return submitGraph(graph, context, "reference-video");
     }
-    const frameGuided = lastFrame !== undefined;
+    const frameGuided = lastFrame !== undefined || settings.singleTakeEngine === "native";
     if (!frameGuided && SHOT_SEPARATOR.test(prompt)) {
       throw new Error("A single-take request cannot contain a --- line: the seamless-chain sampler would split it into several shots");
     }
     // A frame-guided run (or a first-frame multishot run, where the Model forbids aspect-ratio)
     // inherits its aspect from the guiding image at the resolution tier's pixel budget.
     const guidingImage = frameGuided
-      ? uploadedDimensions.get(firstFrame ?? lastFrame!)
+      ? uploadedDimensions.get(firstFrame ?? lastFrame ?? "")
       : firstFrame !== undefined ? uploadedDimensions.get(firstFrame) : undefined;
     const dimensions = guidingImage !== undefined
       ? dimensionsForRatio(guidingImage.width / guidingImage.height, resolution)
@@ -1505,7 +1527,7 @@ export function createComfyuiProvider(options: {
     const graph = frameGuided
       ? buildFrameGraph({
         prompt, width: dimensions.width, height: dimensions.height, frames: gridFrames(duration), seed,
-        ...(firstFrame !== undefined ? { firstFrame } : {}), lastFrame: lastFrame!,
+        ...(firstFrame !== undefined ? { firstFrame } : {}), ...(lastFrame !== undefined ? { lastFrame } : {}),
       }, settings)
       : buildMultishotGraph({
         prompt, width: dimensions.width, height: dimensions.height, frames: gridFrames(duration), seed, steps: settings.steps,
