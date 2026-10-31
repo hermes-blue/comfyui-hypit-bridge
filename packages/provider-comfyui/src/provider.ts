@@ -1,9 +1,9 @@
-import { canonicalize, defineEndpointPackage, wakeAfter } from "@hypit/hypit/endpoint-kit";
-import type { AsyncEndpoint, EndpointOutcome, EndpointPollContext, EndpointRequest, EndpointStartContext, EndpointSupport } from "@hypit/hypit/endpoint-kit";
+import { canonicalize, defineEndpoint, wakeAfter } from "@hypit/hypit/endpoint";
+import type { AsyncEndpoint, EndpointOutcome, EndpointPollContext, EndpointRequest, EndpointStartContext, EndpointSupport } from "@hypit/hypit/endpoint";
 import {
   compileWireRequest, generationTypes, mappingSupportsRequest, sealGeneratedVideoSet,
-} from "@hypit/hypit/generation";
-import type { GenerationRequest, GenerationWireMapping } from "@hypit/hypit/generation";
+} from "@hypit/generation";
+import type { GenerationRequest, GenerationWireMapping } from "@hypit/generation";
 
 export const providerModule = { name: "provider-comfyui", version: "1" } as const;
 
@@ -1893,8 +1893,8 @@ export function createComfyuiProvider(options: {
   };
   const ltxEndpoint: AsyncEndpoint = { start: ltxStart, ...sharedLifecycle };
 
-  return defineEndpointPackage({
-    module: providerModule, facet: "video", instance: options.instance, pool: options.pool,
+  return defineEndpoint({
+    instance: options.instance, pool: options.pool,
     defaultConcurrency: options.concurrency ?? comfyuiDefaults.concurrency,
     actionLimits: { submit: { concurrency: 1 }, poll: { concurrency: 4 }, collect: { concurrency: 2 } },
     pricing: { kind: "local" },

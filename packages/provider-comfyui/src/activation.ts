@@ -1,7 +1,7 @@
 import {
   createRuntimeEndpointAdapterFacet, runtimeConfigBoolean, runtimeConfigExact,
   runtimeConfigObject, runtimeConfigPositiveInteger, runtimeConfigString,
-} from "@hypit/hypit/runtime-kit";
+} from "@hypit/runtime-local/extension";
 import { createComfyuiProvider, providerModule } from "./provider.js";
 
 function configNumber(value: unknown, subject: string): number | undefined {
@@ -22,8 +22,8 @@ const CONFIG_KEYS = [
 ];
 
 export default {
-  format: "hypit.node-package@1" as const,
-  hostFacets: [createRuntimeEndpointAdapterFacet({
+  format: "hypit.package@1" as const,
+  facets: [createRuntimeEndpointAdapterFacet({
     use: providerModule.name,
     activate(context) {
       const config = runtimeConfigObject(context.config, "ComfyUI service");
