@@ -1,9 +1,9 @@
-import { artifactTypes } from "@hypit/hypit/artifact";
-import { sealGenerationPortRequest, sealGenerationPortTable } from "@hypit/hypit/generation";
-import type { GenerationPortTable, GenerationPortValue, GenerationRequest } from "@hypit/hypit/generation";
-import { defineExactModelModule } from "@hypit/hypit/model-kit";
+import { blobTypes } from "@hypit/hypit/blob";
+import { sealGenerationPortRequest, sealGenerationPortTable } from "@hypit/generation";
+import type { GenerationPortTable, GenerationPortValue, GenerationRequest } from "@hypit/generation";
+import { defineExactModelModule } from "@hypit/generation/model";
 import { textTypes } from "@hypit/hypit/text";
-import type { TypeRef } from "@hypit/hypit/author-kit";
+import type { TypeRef } from "@hypit/hypit/protocol";
 
 export const h3ChainModuleRef = { name: "@local/h3-chain", version: "1" } as const;
 
@@ -80,21 +80,21 @@ const takeVideoDeclaration = {
         summary: "Chooses which of the model's two output tiers renders the take." },
       { name: "aspect-ratio", kind: "literal" as const, required: false, values: ["21:9", "16:9", "4:3", "1:1", "3:4", "9:16"],
         summary: "Sets the Frame shape of the take." },
-      { name: "first-frame", kind: "reference" as const, required: false, accepts: [artifactTypes.blob],
+      { name: "first-frame", kind: "reference" as const, required: false, accepts: [blobTypes.blob],
         summary: "Selects the image Artifact the take opens on; it also anchors identity through the seamless-chain engine." },
     ],
     children: [
       { tag: "Reference", cardinality: "many" as const,
         summary: "Attaches one subject Artifact the whole take carries, chosen by an `image` or `audio` reference.",
         attributes: [
-          { name: "image", kind: "reference" as const, required: false, accepts: [artifactTypes.blob],
+          { name: "image", kind: "reference" as const, required: false, accepts: [blobTypes.blob],
             summary: "Selects the image Artifact whose subject every window of the take carries." },
-          { name: "audio", kind: "reference" as const, required: false, accepts: [artifactTypes.blob],
+          { name: "audio", kind: "reference" as const, required: false, accepts: [blobTypes.blob],
             summary: "Selects the audio Artifact the take carries as a voice anchor." },
         ] },
     ],
     ports: [
-      { name: "video", type: artifactTypes.blob, summary: "The generated long-take video Artifact." },
+      { name: "video", type: blobTypes.blob, summary: "The generated long-take video Artifact." },
     ],
     example: [
       '<h3c:TakeVideo id="opening" prompt={script} duration="44" resolution="768P" aspect-ratio="16:9">',

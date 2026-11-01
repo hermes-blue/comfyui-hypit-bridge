@@ -1,9 +1,10 @@
-import { artifactTypes } from "@hypit/hypit/artifact";
-import { generationPort, sealGenerationMediaBinding, sealGenerationRequestDraft } from "@hypit/hypit/generation";
-import type { GenerationMediaPort, GenerationMediaRole, GenerationPortValue } from "@hypit/hypit/generation";
-import { createExactModelPrimaryGenerationFragment, exactModelMediaInputNames, exactModelTextInputName } from "@hypit/hypit/model-kit";
-import type { ExactModelMediaInput } from "@hypit/hypit/model-kit";
-import type { CanonicalValue, StructuredElement, StructuredSurfaceHandler, SurfaceResolvedReference, TypeRef } from "@hypit/hypit/author-kit";
+import { blobTypes } from "@hypit/hypit/blob";
+import { generationPort, sealGenerationMediaBinding, sealGenerationRequestDraft } from "@hypit/generation";
+import type { GenerationMediaPort, GenerationMediaRole, GenerationPortValue } from "@hypit/generation";
+import { createExactModelPrimaryGenerationFragment, exactModelMediaInputNames, exactModelTextInputName } from "@hypit/generation/model";
+import type { ExactModelMediaInput } from "@hypit/generation/model";
+import type { CanonicalValue, TypeRef } from "@hypit/hypit/protocol";
+import type { StructuredElement, StructuredSurfaceHandler, SurfaceResolvedReference } from "@hypit/hypit/markup";
 import { textTypes, verifyText } from "@hypit/hypit/text";
 import { h3ChainEndpoints } from "./index.js";
 
@@ -27,7 +28,7 @@ function ref(element: StructuredElement, name: string, type: TypeRef, resolve: (
   const result = resolve(path); assert(result !== undefined && sameType(result.type, type), `${element.name}.${name} has the wrong type`); return result;
 }
 function mediaRef(element: StructuredElement, name: string, role: GenerationMediaRole, resolve: (path: string) => SurfaceResolvedReference | undefined): SurfaceResolvedReference {
-  const result = ref(element, name, artifactTypes.blob, resolve);
+  const result = ref(element, name, blobTypes.blob, resolve);
   if (result.record !== undefined) assert(result.record.value.kind === "blob" && result.record.value.mediaType.startsWith(`${role}/`), `${element.name}.${name} must be ${role} media`);
   return result;
 }
